@@ -324,14 +324,16 @@ public class VariableThroughputTimer
    	}
 
    	public void latencyBaseDecision(double firstTF,double secondF,double thirdSF,double forthN) {
-   		if (thirdSF<(avgPingLatency+20)){
+   		if (secondF<(avgPingLatency+5)){
    				System.out.println("ACCEPTTTTTTTTTT:");
         		numSecPassedCond++;
    		}
    	}
 
    	public void latencyAndRpsBaseDecision(int realOpsecCnt,int expCnt,double firstTF,double secondF,double thirdSF,double forthN) {
-   		if ((forthN<(avgPingLatency+30))&&(realOpsecCnt>(expCnt-(expCnt*0.10)))){
+   		//if ((forthN<(avgPingLatency+30))&&(realOpsecCnt>(expCnt-(expCnt*0.10)))){
+   		int threshold=20;
+   		if ((secondF<(avgPingLatency+threshold))){
    			if (expCnt!=5){
         		numSecPassedCond++;
         		System.out.println("Number of secs passed the criteria: "+numSecPassedCond);
@@ -353,13 +355,19 @@ public class VariableThroughputTimer
         //System.out.println("key: "+(long)(secs-xSecMonitor)+" Values: "+multiMapStartTimeLatency.get((long)(secs-xSecMonitor)));
         List<Integer> values=multiMapEndTimeLatency.get((long)(secs-xSecMonitor));
         Collections.sort(values);
+        
+        int secFromZero=((int)((secs-xSecMonitor)-startSec)/1000);//converting the secs to value start from 0 not startSec
+        int expCnt=mapTimeOpsec.get(secFromZero);
+        
+        if (expCnt>realOpsecCnt){
+            for (int i=0;i<(expCnt-realOpsecCnt);i++){
+            	values.add(100000);
+            }
+        }
         double firstQrtl=percentile(values,25);
         double secQrtl=percentile(values,50);
         double thirdQrtl=percentile(values,75);
         double maxQrtl=percentile(values,90);
-
-        int secFromZero=((int)((secs-xSecMonitor)-startSec)/1000);//converting the secs to value start from 0 not startSec
-        int expCnt=mapTimeOpsec.get(secFromZero);
         
         //rpsBaseDecision(realOpsecCnt,expCnt);						//adding to the table based on OPS         
         //hitBaseDecision(realHitCnt,expCnt);        				//adding to the table based on HitPerSecond
@@ -392,6 +400,7 @@ public class VariableThroughputTimer
     			if (incGap==2){
     				exprps=exprps*2;
     			}else{
+    				System.out.println("************************Increament: "+incGap);
     				exprps=exprps+incGap;
     			}
         		//if (exprps>MaxActualOps){
@@ -414,7 +423,6 @@ public class VariableThroughputTimer
         		else{																//two times failed
         			numFailRepeate=false;
         			if (MaxActualOps==9999999){
-
         					duration=7;
         				}
         			//set the MaxActualOps to a value larger than before 
@@ -434,7 +442,7 @@ public class VariableThroughputTimer
     					System.out.println("FINISHED....................................................................................................................");
     				}
     				prevAcceptedOps=MaxAcceptedOps;
-    				repeatCnt++;
+    				//repeatCnt++;
     				
         			exprps=MaxAcceptedOps;
         			//exprps=10;
@@ -443,39 +451,12 @@ public class VariableThroughputTimer
         		}
         		
         	}
-//        	else{//failed
-//        		if (numFailRepeate==true){//two times failed
-//        			numFailRepeate=false;
-//        			if (baserps==prevrpstobebase){//check to decrease the base
-//        				System.out.println("******* based is reduced ********");
-//            			baserps=baserps-50;
-//            			prevrpstobebase=baserps;
-//        			}else{
-//        				System.out.println("DIFFERENCE BET MAX AND LOWER= "+MaxActualOps+"-"+prevrpstobebase+"="+(MaxActualOps-prevrpstobebase));
-//        				if (MaxActualOps==9999999){
-//        				MaxActualOps=tmpMaxActualOps+(int)(tmpMaxActualOps*0.1);
-//        				
-//        				duration=7;
-//        				}
-//            			baserps=prevrpstobebase;        				
-//        			}
-//        	
-//        			exprps=10;
-//        			createRows(exprps+baserps,duration);
-//        			System.out.println("********************baserps="+baserps+"  exprps="+exprps+"  ****************");
-//        		}
-//        		else{//first time failed-reapeat again with the same rps
-//            		numFailRepeate=true;
-//            		//createRows(exprps+baserps,duration);
-//            		createRows(5,duration);
-//        		}
-//        	}
 	    	timeStart=secFromZero-(int)(xSecMonitor/1000);
 	    	timeEnd=timeEnd+duration;
 	    	//System.out.println("timeStart:"+timeStart+"timeEnd:"+timeEnd);
 	    	numSecPassedCond=0;
 	    	tmpMaxActualOps=Collections.max(realOpsLastDuration);
-	    	System.out.println("Actual ops within the duration period:"+realOpsLastDuration+"MAX IS: "+tmpMaxActualOps);
+	    	System.out.println("Actual ops within the duration period:"+realOpsLastDuration+"MAX IS: "+tmpMaxActualOps+" ,Median="+percentile(realOpsLastDuration,50));
 	    	realOpsLastDuration.clear();
         }
         	
@@ -499,90 +480,90 @@ public class VariableThroughputTimer
    	}
 
    	
-   	public void anticipatRpsBaseActualRps(double secs) {
-   	
-        //System.out.println("previous sec:"+(long)(secs-1000.0));
-        
-        //System.out.println("Number of requests sent at "+(long)(secs-xSecMonitor)+" which is "+xSecMonitor+" millisecond before: "+freq);
-        int realHitCnt=multiMapStartTimeLatency.get((long)(secs-xSecMonitor)).size();//Actual Hit Count
-
-        //System.out.println("Number of requests sent at "+(long)(secs-xSecMonitor)+" which is "+xSecMonitor+" millisecond before: "+realHitCnt);
-        int realOpsecCnt=multiMapEndTimeLatency.get((long)(secs-xSecMonitor)).size();//Actual op/per/sec
-        
-        //calculateing Percentile
-        //System.out.println("key: "+(long)(secs-xSecMonitor)+" Values: "+multiMapStartTimeLatency.get((long)(secs-xSecMonitor)));
-        List<Integer> values=multiMapEndTimeLatency.get((long)(secs-xSecMonitor));
-        Collections.sort(values);
-        double firstQrtl=percentile(values,25);
-        double secQrtl=percentile(values,50);
-        double thirdQrtl=percentile(values,75);
-        double maxQrtl=percentile(values,90);
-
-        int secFromZero=((int)((secs-xSecMonitor)-startSec)/1000);//converting the secs to value start from 0 not startSec
-        int expCnt=mapTimeOpsec.get(secFromZero);
-        
-        //rpsBaseDecision(realOpsecCnt,expCnt);						//adding to the table based on OPS         
-        //hitBaseDecision(realHitCnt,expCnt);        				//adding to the table based on HitPerSecond
-        //latencyBaseDecision(firstQrtl,secQrtl,thirdQrtl,maxQrtl);   //adding to the table based on Latency
-        realOpsLastDuration.add(realOpsecCnt);
-        latencyAndRpsBaseDecision(realOpsecCnt,expCnt,firstQrtl,secQrtl,thirdQrtl,maxQrtl);   //adding to the table based on Latency&Rps
-        
-        //System.out.println("secFromZero:"+secFromZero+"  timeStart:"+timeStart+" timeEnd:"+timeEnd);
-        if (secFromZero==timeEnd){
-        	//System.out.println("secFromZero==timeEnd"+secFromZero+" = "+timeEnd);
-        	System.out.println("numSecPassedCondexpected:"+(int)((timeEnd-timeStart-(xSecMonitor/1000))*0.5)+" <=numSecPassedCond: "+numSecPassedCond);
-        	if ((int)((timeEnd-timeStart-(xSecMonitor/1000))*0.5)<numSecPassedCond){
-        		prevrpstobebase=exprps+baserps;
-        		exprps=exprps*2;
-            	createRows(exprps+baserps,duration);
-            	//System.out.println("createRow(exprps:"+exprps+"time:"+secFromZero);
-
-        	}
-        	else{//failed
-        		
-        		if (numFailRepeate==true){//two times failed
-        			numFailRepeate=false;
-        			if (baserps==prevrpstobebase){//check to decrease the base
-        				System.out.println("******* based is reduced ********");
-            			baserps=baserps-50;
-            			prevrpstobebase=baserps;
-        			}else{
-            			baserps=prevrpstobebase;        				
-        			}
-
-        			exprps=10;
-        			createRows(exprps+baserps,duration);
-        			System.out.println("********************baserps="+baserps+"  exprps="+exprps+"  ****************");
-        		}
-        		else{//first time failed-reapeat again with the same rps
-            		numFailRepeate=true;
-            		//createRows(exprps+baserps,duration);
-            		createRows(5,duration);
-        		}
-        	}
-	    	timeStart=secFromZero-(int)(xSecMonitor/1000);
-	    	timeEnd=timeEnd+duration;
-	    	//System.out.println("timeStart:"+timeStart+"timeEnd:"+timeEnd);
-	    	numSecPassedCond=0;
-	    	System.out.println("expectec ops within the duration period:"+realOpsLastDuration);
-	    	realOpsLastDuration.clear();
-        }
-        	
-
-        System.out.println("Time:"+secFromZero);
-        System.out.println("Expected op/per/sec: "+expCnt);
-        System.out.println("Actual   Hit/per/sec: "+realHitCnt);
-        System.out.println("Actual   Op/per/sec: "+realOpsecCnt);
-        System.out.println("25th Percentile    : "+firstQrtl);
-        System.out.println("50th Percentile    : "+secQrtl);
-        System.out.println("75th Percentile    : "+thirdQrtl);
-        System.out.println("90th Percentile    : "+maxQrtl);
-        System.out.println("99th Percentile    : "+percentile(values,99));
-        System.out.println("---------------------------------------------------------------"); 
-        //loghsn.info("TEST THE LOG---TIME: "+secFromZero);
-        //log.info("GUI LOG TEST");
-           
-   	}
+//   	public void anticipatRpsBaseActualRps(double secs) {
+//   	
+//        //System.out.println("previous sec:"+(long)(secs-1000.0));
+//        
+//        //System.out.println("Number of requests sent at "+(long)(secs-xSecMonitor)+" which is "+xSecMonitor+" millisecond before: "+freq);
+//        int realHitCnt=multiMapStartTimeLatency.get((long)(secs-xSecMonitor)).size();//Actual Hit Count
+//
+//        //System.out.println("Number of requests sent at "+(long)(secs-xSecMonitor)+" which is "+xSecMonitor+" millisecond before: "+realHitCnt);
+//        int realOpsecCnt=multiMapEndTimeLatency.get((long)(secs-xSecMonitor)).size();//Actual op/per/sec
+//        
+//        //calculateing Percentile
+//        //System.out.println("key: "+(long)(secs-xSecMonitor)+" Values: "+multiMapStartTimeLatency.get((long)(secs-xSecMonitor)));
+//        List<Integer> values=multiMapEndTimeLatency.get((long)(secs-xSecMonitor));
+//        Collections.sort(values);
+//        double firstQrtl=percentile(values,25);
+//        double secQrtl=percentile(values,50);
+//        double thirdQrtl=percentile(values,75);
+//        double maxQrtl=percentile(values,90);
+//
+//        int secFromZero=((int)((secs-xSecMonitor)-startSec)/1000);//converting the secs to value start from 0 not startSec
+//        int expCnt=mapTimeOpsec.get(secFromZero);
+//        
+//        //rpsBaseDecision(realOpsecCnt,expCnt);						//adding to the table based on OPS         
+//        //hitBaseDecision(realHitCnt,expCnt);        				//adding to the table based on HitPerSecond
+//        //latencyBaseDecision(firstQrtl,secQrtl,thirdQrtl,maxQrtl);   //adding to the table based on Latency
+//        realOpsLastDuration.add(realOpsecCnt);
+//        latencyAndRpsBaseDecision(realOpsecCnt,expCnt,firstQrtl,secQrtl,thirdQrtl,maxQrtl);   //adding to the table based on Latency&Rps
+//        
+//        //System.out.println("secFromZero:"+secFromZero+"  timeStart:"+timeStart+" timeEnd:"+timeEnd);
+//        if (secFromZero==timeEnd){
+//        	//System.out.println("secFromZero==timeEnd"+secFromZero+" = "+timeEnd);
+//        	System.out.println("numSecPassedCondexpected:"+(int)((timeEnd-timeStart-(xSecMonitor/1000))*0.5)+" <=numSecPassedCond: "+numSecPassedCond);
+//        	if ((int)((timeEnd-timeStart-(xSecMonitor/1000))*0.5)<numSecPassedCond){
+//        		prevrpstobebase=exprps+baserps;
+//        		exprps=exprps*2;
+//            	createRows(exprps+baserps,duration);
+//            	//System.out.println("createRow(exprps:"+exprps+"time:"+secFromZero);
+//
+//        	}
+//        	else{//failed
+//        		
+//        		if (numFailRepeate==true){//two times failed
+//        			numFailRepeate=false;
+//        			if (baserps==prevrpstobebase){//check to decrease the base
+//        				System.out.println("******* based is reduced ********");
+//            			baserps=baserps-50;
+//            			prevrpstobebase=baserps;
+//        			}else{
+//            			baserps=prevrpstobebase;        				
+//        			}
+//
+//        			exprps=10;
+//        			createRows(exprps+baserps,duration);
+//        			System.out.println("********************baserps="+baserps+"  exprps="+exprps+"  ****************");
+//        		}
+//        		else{//first time failed-reapeat again with the same rps
+//            		numFailRepeate=true;
+//            		//createRows(exprps+baserps,duration);
+//            		createRows(5,duration);
+//        		}
+//        	}
+//	    	timeStart=secFromZero-(int)(xSecMonitor/1000);
+//	    	timeEnd=timeEnd+duration;
+//	    	//System.out.println("timeStart:"+timeStart+"timeEnd:"+timeEnd);
+//	    	numSecPassedCond=0;
+//	    	System.out.println("expectec ops within the duration period:"+realOpsLastDuration);
+//	    	realOpsLastDuration.clear();
+//        }
+//        	
+//
+//        System.out.println("Time:"+secFromZero);
+//        System.out.println("Expected op/per/sec: "+expCnt);
+//        System.out.println("Actual   Hit/per/sec: "+realHitCnt);
+//        System.out.println("Actual   Op/per/sec: "+realOpsecCnt);
+//        System.out.println("25th Percentile    : "+firstQrtl);
+//        System.out.println("50th Percentile    : "+secQrtl);
+//        System.out.println("75th Percentile    : "+thirdQrtl);
+//        System.out.println("90th Percentile    : "+maxQrtl);
+//        System.out.println("99th Percentile    : "+percentile(values,99));
+//        System.out.println("---------------------------------------------------------------"); 
+//        //loghsn.info("TEST THE LOG---TIME: "+secFromZero);
+//        //log.info("GUI LOG TEST");
+//           
+//   	}
     //end of hsn
    	
     private synchronized void checkNextSecond(double secs) {

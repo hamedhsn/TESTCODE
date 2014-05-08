@@ -33,6 +33,7 @@ import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.io.File;
 import java.io.LineNumberReader;
+import java.io.*;
 //import java.util.logging.Logger;
 
 
@@ -82,6 +83,11 @@ public class VariableThroughputTimer
     public static Map<Long, List<Integer>> multiMapEndTimeLatency   = new HashMap<Long, List<Integer>>(); //map of <EndTime,Latency>
     public static ArrayList<Long> listOfStartTime=new ArrayList();//to be deleted     	
     public static ArrayList<Integer> realOpsLastDuration=new ArrayList();
+    public static ArrayList<Integer> wind50latency=new ArrayList();
+    public static ArrayList<Integer> wind75latency=new ArrayList();
+    public static ArrayList<Integer> wind90latency=new ArrayList();
+    public static ArrayList<Integer> percentileLatPerSec=new ArrayList();
+    public static Map<Integer, List<Integer>> percentilewindow = new HashMap<Integer, List<Integer>>();    
     public int tmpMaxActualOps=0;
     public int MaxActualOps=9999999;
     public int MaxAcceptedOps=0;
@@ -89,12 +95,16 @@ public class VariableThroughputTimer
     public int repeatCnt=0;//number of times we repeat the same AcceptedOps
     private double xSecMonitor=1000.0; //monitoring x msec before the newest instance 
     public Map<Integer, Integer> mapTimeOpsec = new TreeMap<Integer, Integer>();	//Map of <time,operationPerSecond>
+    int lat50decider=0;
+    int lat75decider=0;
+    int lat90decider=0;
     public int timeEnd=10;
     public int timeStart=0;
     public int duration=10;
     public int numSecPassedCond=0;
     public boolean numFailRepeate=false;
     public double avgPingLatency;
+    public String host="";
     public int incGap=2;
     
     public VariableThroughputTimer() {
@@ -105,7 +115,7 @@ public class VariableThroughputTimer
         createRows(exprps,duration+2);//hsn
         
         avgPingLatency=Double.parseDouble(readAvgLatencyFromFile("tmp1.txt")); //reading the avgping latency from tmp1.txt file
-    
+        host=readAvgLatencyFromFile("tmp2.txt");
         
 //        loghsn.setLevel(java.util.logging.Level.INFO);
 //        loghsn.setUseParentHandlers(false);
@@ -324,9 +334,17 @@ public class VariableThroughputTimer
    	}
 
    	public void latencyBaseDecision(double firstTF,double secondF,double thirdSF,double forthN) {
-   		if (secondF<(avgPingLatency+5)){
-   				System.out.println("ACCEPTTTTTTTTTT:");
+   		if (incGap==2){
+   	   		if (secondF<(avgPingLatency+5)){
+   				System.out.println("FIRST PART:");
         		numSecPassedCond++;
+   	   		}
+   		}
+   		else{
+   			if ((thirdSF<lat75decider)&&(forthN<lat90decider)){
+   				System.out.println("SECOND PART:");
+        		numSecPassedCond++;
+   			}
    		}
    	}
 
@@ -341,6 +359,28 @@ public class VariableThroughputTimer
    		}
    	}
 
+   	public void doCommand(List<String> command)   
+   		  throws IOException  
+   		  {  
+   		   String s = null;  
+   		   ProcessBuilder pb = new ProcessBuilder(command);  
+   		   Process process = pb.start();  
+   		   BufferedReader stdInput = new BufferedReader(new InputStreamReader(process.getInputStream()));  
+   		   BufferedReader stdError = new BufferedReader(new InputStreamReader(process.getErrorStream()));  
+   		   // read the output from the command  
+   		   //System.out.println("Here is the standard output of the command:\n");  
+   		   while ((s = stdInput.readLine()) != null)  
+   		   {  
+   		    System.out.println(s);  
+   		   }  
+   		   // read any errors from the attempted command  
+   		   //System.out.println("Here is the standard error of the command (if any):\n");  
+   		   while ((s = stdError.readLine()) != null)  
+   		   {  
+   		    System.out.println(s);  
+   		   }  
+   		  } 
+   	
    	public void anticipatRpsBaseActualRps1(double secs) {
    	   	
         //System.out.println("previous sec:"+(long)(secs-1000.0));
@@ -359,68 +399,105 @@ public class VariableThroughputTimer
         int secFromZero=((int)((secs-xSecMonitor)-startSec)/1000);//converting the secs to value start from 0 not startSec
         int expCnt=mapTimeOpsec.get(secFromZero);
         
+        /* ********** Add infinity(100000) for the Loss value ***************
         if (expCnt>realOpsecCnt){
             for (int i=0;i<(expCnt-realOpsecCnt);i++){
             	values.add(100000);
             }
-        }
+        }*/
+
         double firstQrtl=percentile(values,25);
         double secQrtl=percentile(values,50);
         double thirdQrtl=percentile(values,75);
         double maxQrtl=percentile(values,90);
+        wind50latency.add((int)secQrtl);
+        wind75latency.add((int)thirdQrtl);
+        wind90latency.add((int)maxQrtl);
+        percentileLatPerSec.clear();
+        for (int i=1;i<100;i++){
+        	List<Integer> vls = percentilewindow.get(i);
+        	if (vls == null) {
+        		vls=new  ArrayList<Integer>();
+        	}
+        	int per=(int)percentile(values,i);
+        	if (i%2==0){
+        		percentileLatPerSec.add(per);
+        	}
+    		percentilewindow.put(i, addDicValue(vls,per));
+        }
+
+        //System.out.println("Latency Values:"+windlatency);
         
         //rpsBaseDecision(realOpsecCnt,expCnt);						//adding to the table based on OPS         
         //hitBaseDecision(realHitCnt,expCnt);        				//adding to the table based on HitPerSecond
         //latencyBaseDecision(firstQrtl,secQrtl,thirdQrtl,maxQrtl);   //adding to the table based on Latency
         realOpsLastDuration.add(realOpsecCnt);
-        latencyAndRpsBaseDecision(realOpsecCnt,expCnt,firstQrtl,secQrtl,thirdQrtl,maxQrtl);   //adding to the table based on Latency&Rps
+        //latencyAndRpsBaseDecision(realOpsecCnt,expCnt,firstQrtl,secQrtl,thirdQrtl,maxQrtl);   //adding to the table based on Latency&Rps
+        latencyBaseDecision(firstQrtl,secQrtl,thirdQrtl,maxQrtl);
         
         //System.out.println("secFromZero:"+secFromZero+"  timeStart:"+timeStart+" timeEnd:"+timeEnd);
         if (secFromZero==timeEnd){
+        	/* *********** PING ************/
+        	List<String> commands = new ArrayList<String>();  
+        	commands.add("sudo");
+        	commands.add("tcpping");
+        	commands.add("-x");  
+        	commands.add("1");  
+        	commands.add(host);  
+        	try{
+        	doCommand(commands);
+        	}
+        	catch (IOException ex){
+        		
+        	}
         	//System.out.println("secFromZero==timeEnd"+secFromZero+" = "+timeEnd);
         	System.out.println("numSecPassedCondexpected:"+(int)((timeEnd-timeStart-(xSecMonitor/1000))*0.5)+" <=numSecPassedCond: "+numSecPassedCond);
         	if ((int)((timeEnd-timeStart-(xSecMonitor/1000))*0.5)<=numSecPassedCond){
-//        		prevrpstobebase=exprps+baserps;
-//        		if (exprps*2+baserps>MaxActualOps){
-//        			//exprps=MaxActualOps;
-//        			createRows(MaxActualOps,duration);
-//        		}
-//        		else{
-//        			if (MaxAcceptedOps<expCnt){
-//        				MaxAcceptedOps=expCnt;
-//        			}
-//        			if (incGap==2){
-//        				exprps=exprps*2;
-//        			}else{
-//        				exprps=exprps+incGap;
-//        			}
-//        			createRows(exprps+baserps,duration);
-//        			//System.out.println("createRow(exprps:"+exprps+"time:"+secFromZero);
-//        		}
+        		wind50latency.clear();
+        		wind75latency.clear();
+        		wind90latency.clear();
+        		percentilewindow.clear();
     			if (incGap==2){
     				exprps=exprps*2;
     			}else{
     				System.out.println("************************Increament: "+incGap);
     				exprps=exprps+incGap;
     			}
-        		//if (exprps>MaxActualOps){
-        		//	createRows(MaxActualOps,duration);
-        		//}
-        		//else{
         			if (MaxAcceptedOps<expCnt){
 
         				MaxAcceptedOps=expCnt;
         			}
         			createRows(exprps,duration);
-        		//}
         	}
         	else{//first time failed
-        		if (numFailRepeate==false){//first time failed-reapeat again with the same rps
+        		if ((numFailRepeate==false)&& (incGap==2)){//first time failed-reapeat again with the same rps
             		numFailRepeate=true;
             		createRows(exprps,duration);
             		//createRows(5,duration);
         		}
         		else{																//two times failed
+        			if (incGap==2){
+        				Collections.sort(wind50latency);
+        				Collections.sort(wind75latency);
+        				Collections.sort(wind90latency);
+        				lat50decider=(int)percentile(wind50latency,25);
+        				lat75decider=(int)percentile(wind75latency,25);
+        				lat90decider=(int)percentile(wind90latency,25);
+        				lat50decider-=lat50decider*1;
+        				lat75decider-=lat75decider*1;
+        				lat90decider-=lat90decider*1;
+        				System.out.println("Latency Values:"+wind50latency);
+        				System.out.println("5025thvalues:"+(int)percentile(wind50latency,25));
+        				System.out.println("5050thvalues:"+(int)percentile(wind50latency,50));
+        				System.out.println("7525thvalues:"+(int)percentile(wind75latency,25));
+        				System.out.println("7550thvalues:"+(int)percentile(wind75latency,50));
+        				System.out.println("9025thvalues:"+(int)percentile(wind90latency,25));
+        				System.out.println("9050thvalues:"+(int)percentile(wind90latency,50));
+
+        				for (int i=1;i<100;i++){
+        					System.out.println("Percentile Values "+i+":"+percentilewindow.get(i));
+        				}
+        			}
         			numFailRepeate=false;
         			if (MaxActualOps==9999999){
         					duration=7;
@@ -473,6 +550,8 @@ public class VariableThroughputTimer
         System.out.println("75th Percentile    : "+thirdQrtl);
         System.out.println("90th Percentile    : "+maxQrtl);
         System.out.println("99th Percentile    : "+percentile(values,99));
+        System.out.println("AllPercentiles     : "+percentileLatPerSec);
+        
         System.out.println("---------------------------------------------------------------"); 
         //loghsn.info("TEST THE LOG---TIME: "+secFromZero);
         //log.info("GUI LOG TEST");
